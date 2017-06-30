@@ -1,0 +1,12 @@
+{
+    "extends": "../tsconfig.json",
+    "compilerOptions": {
+        "outDir": "../build"
+    },
+    "include": [
+        "*.ts",
+        "../src/*.ts",
+        "../node_modules/@types/mocha/index.d.ts",
+        "../node_modules/@types/node/index.d.ts"
+    ]
+}
