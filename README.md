@@ -11,18 +11,26 @@ Forget all the custom toy DSLs for templating and instead use the full power of
 ES6 to directly define fully data-driven, purely functional and easily
 *composable* components for static serialization to HTML & friends.
 
+### Features
+
+- Only uses arrays, functions, ES6 iterables / iterators / generators
+- Eager & lazy component composition using embedded functions / closures
+- Support for self-closing tags (incl. validation), boolean attributes
+- Optional HTML entity encoding
+- Small (2.2KB minified) & fast
+
+*) Lazy composition here means that functions are only executed at serialization time. Examples below...
+
 ### No special sauce needed (or wanted)
 
-Using only vanilla language features like arrays, objects, functions and
-iterators / generators, simplifies the development, composability, reusability
-and testing of components. Furthermore, no custom template parser is required
-and you're only restricted by the expressiveness of the language / environment,
-not by your template engine. This library is 2.58KB minified.
+Using only vanilla language features simplifies the development, composability, reusability and testing of components. Furthermore, no custom template parser is required and you're only restricted by the expressiveness of the language / environment, not by your template engine.
+
+Components can be defined as simple functions returning arrays or loaded via JSON/JSONP.
 
 ### What is Hiccup?
 
 For many years, [Hiccup](https://github.com/weavejester/hiccup) has been the
-de-facto standard to encode HTML/XML datastructures in Clojure. A valid Hiccup
+de-facto standard to encode HTML/XML datastructures in Clojure. This library brings & extends this convention into ES6. A valid Hiccup
 tree is any flat (though, usually nested) array of the following possible
 structures. Any functions embedded in the tree are expected to return values of
 the same structure. Please see [examples](#examples) & [API](#api) further explanations...
@@ -55,7 +63,7 @@ Tag names support
 style ID & class attribute expansion:
 
 ```js
-h.serializeTree(
+h.serialize(
     ["div#yo.hello.world", "Look ma, ", ["strong", "no magic!"]]
 );
 ```
@@ -73,7 +81,7 @@ serialized in HTML5 syntax (i.e. present or not, but no values).
 If the 2nd array element is not a plain object, it's treated as normal child node (see previous example).
 
 ```js
-h.serializeTree(
+h.serialize(
     ["div.notice",
         {
             selected: true,
@@ -95,7 +103,7 @@ h.serializeTree(
 ```js
 const thumb = (src) => ["img.thumb", { src, alt: "thumbnail" }];
 
-h.serializeTree(
+h.serialize(
     ["div.gallery", ["foo.jpg", "bar.jpg", "baz.jpg"].map(thumb)]
 );
 ```
@@ -108,7 +116,7 @@ h.serializeTree(
 </div>
 ```
 
-### SVG generation
+### SVG generation, generators & lazy composition
 
 ```js
 const fs = require("fs");
@@ -116,8 +124,9 @@ const fs = require("fs");
 // creates an unstyled SVG circle element
 const circle = (x, y, r) => ["circle", { cx: x | 0, cy: y | 0, r: r | 0 }];
 
-// note how this component embeds `circle`!
-// this form delays evaluation until actual serialization time.
+// note how this next component lazily composes `circle`.
+// This form delays evaluation of the `circle` component
+// until serialization time.
 // since `circle` is in the head position of the returned array
 // all other elements are passed as args when `circle` is called
 const randomCircle = () => [
@@ -127,13 +136,19 @@ const randomCircle = () => [
     Math.random() * 100
 ];
 
+// generator to produce iterable of `n` calls to `fn`
+function* repeatedly(n, fn) {
+    while (n-- > 0) yield fn();
+}
+
 // generate 100 random circles and write serialized SVG to file
-fs.writeFileSync(
-    "circles.svg",
-    h.serializeTree(
-        ["svg", { xmlns: h.SVG_NS, width: 1000, height: 1000 },
-            ["g", { fill: "none", stroke: "red" },
-                new Array(100).fill(0).map(randomCircle)]]));
+// `randomCircle` is wrapped
+const doc = [
+    "svg", { xmlns: h.SVG_NS, width: 1000, height: 1000 },
+        ["g", { fill: "none", stroke: "red" },
+            repeatedly(100, randomCircle)]];
+
+fs.writeFileSync("circles.svg", h.serialize(doc));
 ```
 
 ```xml
@@ -176,7 +191,7 @@ const widget = [
         [dlList, { id: "glossary" }, glossary]];
 
 // the 2nd arg `true` enforces HTML entity encoding (off by default)
-h.serializeTree(widget, true);
+h.serialize(widget, true);
 ```
 
 ```html
@@ -220,14 +235,14 @@ const TOC = [
     [3, "No thanks"],
     [2, "Chapter"],
     [3, "Exercises"],
-    [4, "Solutions"]
+    [4, "Solutions"],
     [2, "The End"]
 ];
 
 // create new indexer instance
 const section = indexer();
 
-h.serializeTree([
+h.serialize([
     "div.toc",
     TOC.map(([level, title]) => [section, level, title])
 ]);
@@ -248,17 +263,15 @@ h.serializeTree([
 
 ## API
 
-The library exposes these three functions:
+The library exposes these two functions:
 
-### serializeTree(tree, escape = false): string
+### serialize(tree, escape = false): string
 
 Recursively normalizes and then serializes given tree as HTML/SVG/XML string.
 If `escape` is true, HTML entity replacement is applied to all element body & attribute values.
 
-### normalizeTree(tree): any[]
-
-Recursively normalizes given tree and expands any embedded component functions
-with their results. A normalized element has one of these shapes:
+Any embedded component functions are expanded with their results.
+A normalized element has one of these shapes:
 
 ```js
 // no body
@@ -267,8 +280,8 @@ with their results. A normalized element has one of these shapes:
 // with body
 ["div", {...}, "a", "b", ...]
 
-// iterator of normalized elements
-[iterator]
+// iterable of normalized elements
+[iteratable]
 ```
 
 Tags can be defined in "Zencoding" convention, i.e.
@@ -286,7 +299,7 @@ Tags can be defined in "Zencoding" convention, i.e.
 ```
 
 The presence of the attributes object is optional.
-If the 2nd array index is **not** an object, it'll be treated
+If the 2nd array index is **not** a plain object, it'll be treated
 as normal child of the current tree node.
 
 Any `null` or `undefined` values (other than in head position)
@@ -297,7 +310,7 @@ arguments when that function is called.
 ```js
 const myfunc = (a, b, c) => ["div", {id: a, class: c}, b];
 
-serializeTree([myfunc, "foo", null, "bar"])
+serialize([myfunc, "foo", null, "bar"])
 ```
 
 Will result in:
@@ -315,11 +328,14 @@ implementation).
 
 ### escape(str: string): string
 
-Applies HTML entity replacement on given string.
+Helper function. Applies HTML entity replacement on given string.
+If `serialize()` is called with `true` as 2nd argument, entity encoding
+is done automatically ([list of entities considered](https://github.com/thi-ng/hiccup/blob/master/src/index.ts#L14)).
 
 ## Building
 
 ### Build requirements
+
 Building & testing this project requires [Typescript](http://typescriptlang.org)
 and [Mocha](http://mochajs.org/) globally installed:
 

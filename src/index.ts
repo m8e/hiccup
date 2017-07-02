@@ -22,68 +22,9 @@ const ENTITIES = {
 const ENTITY_RE = new RegExp(`[${Object.keys(ENTITIES)}]`, "g");
 
 /**
- * Recursively normalizes and then serializes given tree as HTML/SVG/XML string.
- *
- * @param tree elements / component tree
- * @param escape auto-escape entities
- */
-const serializeTree = (tree: any[], escape = false) => serialize(normalizeTree(tree), escape);
-
-/**
- * Recursively serializes given tree as HTML/SVG/XML string.
- * Assumes given tree is already normalized.
- *
- * @param tree
- */
-const serialize = (tree: any, esc: boolean) => {
-    if (tree == null) {
-        return "";
-    }
-    if (Array.isArray(tree)) {
-        const n = tree.length,
-            el = tree[0],
-            attribs = tree[1];
-        let str = `<${el}`;
-        for (let a in attribs) {
-            if (attribs.hasOwnProperty(a)) {
-                const v = attribs[a];
-                if (v !== undefined) {
-                    if (v === true) {
-                        str += ` ${a}`;
-                    } else if (v !== false) {
-                        str += ` ${a}="${esc ? escape(v.toString()) : v}"`;
-                    }
-                }
-            }
-        }
-        if (n > 2) {
-            str += ">";
-            for (let i = 2; i < n; i++) {
-                str += serialize(tree[i], esc);
-            }
-            return str += `</${el}>`;
-        } else if (!VOID_TAGS[el]) {
-            return str += `></${el}>`;
-        }
-        return str += "/>";
-    }
-    if (iter(tree)) {
-        const res = [];
-        for (let t of <Iterable<any>>tree) {
-            res.push(serialize(t, esc));
-        }
-        return res.join("");
-    }
-    if (fn(tree)) {
-        return serialize(tree(), esc);
-    }
-    return esc ? escape(tree.toString()) : tree;
-};
-
-/**
- * Recursively normalizes given tree and expands any embedded
- * component functions with their results. Each node of the
- * input tree can have one of the following forms:
+ * Recursively normalizes and serializes given tree as HTML/SVG/XML string.
+ * Expands any embedded component functions with their results. Each node of the
+ * input tree can have one of the following input forms:
  *
  * ```
  * ["tag", ...]
@@ -97,78 +38,107 @@ const serialize = (tree: any, esc: boolean) => {
  * Tags can be defined in "Zencoding" convention, e.g.
  *
  * ```
- * ["div#foo.bar.baz"] => <div id="foo" class="bar baz"></div>
+ * ["div#foo.bar.baz", "hi"] // <div id="foo" class="bar baz">hi</div>
  * ```
  *
- * The presence of the attributes object is optional.
+ * The presence of the attributes object (2nd array index) is optional.
  * Any `null` or `undefined` values (other than in head position)
  * will be removed, unless a function is in head position.
- * In this case all other elements of that array are passed as
- * arguments when that function is called. The return value the
- * function MUST be a valid new tree (or `undefined`).
- * Functions located in other positions are called without args
+ *
+ * A function in head position of a node acts as composition & delayed
+ * execution mechanism and the function will only be executed at
+ * serialization time. In this case all other elements of that node /
+ * array are passed as arguments when that function is called.
+ * The return value the function MUST be a valid new tree
+ * (or `undefined`).
+ *
+ * ```
+ * const foo = (a,b) => ["div#"+a, b];
+ *
+ * [foo, "id", "body"] // <div id="id">body</div>
+ * ```
+ *
+ * Functions located in other positions are called **without** args
  * and can return any (serializable) value (i.e. new trees, strings,
  * numbers, iterables or any type with a suitable `.toString()`
  * implementation).
  *
- * @param tree
+ * @param tree elements / component tree
+ * @param escape auto-escape entities
  */
-const normalizeTree = (tree: any[]) => {
+const serialize = (tree: any[], escape = false) => _serialize(tree, escape);
+
+const _serialize = (tree: any, esc: boolean) => {
     if (tree == null) {
-        return;
+        return "";
     }
     if (Array.isArray(tree)) {
-        const tag = tree[0];
-        let norm;
+        if (!tree.length) {
+            return "";
+        }
+        let tag = tree[0];
         if (fn(tag)) {
-            return normalizeTree(tag.apply(null, tree.slice(1)));
+            return _serialize(tag.apply(null, tree.slice(1)), esc);
         }
         if (str(tag)) {
-            norm = normalizeElement(tree);
-            if (norm.length > 2) {
-                const body = norm[2],
-                    n = body.length;
-                norm.length = 2;
-                for (let i = 0, j = 2; i < n; i++) {
-                    let el = body[i];
-                    if (el != null) {
-                        if (!Array.isArray(el) && iter(el)) {
-                            for (let c of el) {
-                                if ((c = normalizeTree(c)) !== undefined) {
-                                    norm[j++] = c;
-                                }
-                            }
-                        } else if ((el = normalizeTree(el)) !== undefined) {
-                            norm[j++] = el;
+            tree = normalize(tree);
+            tag = tree[0];
+            let attribs = tree[1],
+                body = tree[2],
+                res = `<${tag}`;
+            for (let a in attribs) {
+                if (attribs.hasOwnProperty(a)) {
+                    const v = attribs[a];
+                    if (v !== undefined) {
+                        if (v === true) {
+                            res += " " + a;
+                        } else if (v !== false) {
+                            res += ` ${a}="${esc ? escape(v.toString()) : v}"`;
                         }
                     }
                 }
             }
-            return norm;
+            if (body) {
+                if (VOID_TAGS[tag]) {
+                    throw new Error(`No body allowed in tag: ${tag}`);
+                }
+                res += ">";
+                for (let i = 0, n = body.length; i < n; i++) {
+                    res += _serialize(body[i], esc);
+                }
+                return res += `</${tag}>`;
+            } else if (!VOID_TAGS[tag]) {
+                return res += `></${tag}>`;
+            }
+            return res += "/>";
         }
         if (iter(tree)) {
-            const res = [];
-            for (let i of tree) {
-                i = normalizeTree(i);
-                if (i !== undefined) {
-                    res.push(i);
-                }
-            }
-            return res[Symbol.iterator]();
+            return _serializeIter(tree, esc);
         }
-        throw new Error(`invalid tag: ${tree}`);
+        throw new Error(`invalid tree node: ${tree}`);
     }
     if (fn(tree)) {
-        return normalizeTree(tree());
+        return _serialize(tree(), esc);
     }
-    return (<any>tree).toString();
+    if (iter(tree)) {
+        return _serializeIter(tree, esc);
+    }
+    return esc ? escape(tree.toString()) : tree;
 };
 
-const normalizeElement = (tag: any[]) => {
+const _serializeIter = (iter: Iterable<any>, esc: boolean) => {
+    const res = [];
+    for (let i of iter) {
+        res.push(_serialize(i, esc));
+    }
+    return res.join("");
+}
+
+const normalize = (tag: any[]) => {
     let el = tag[0], match, id, clazz;
     const attribs: any = {};
     if (!str(el) || !(match = TAG_REGEXP.exec(el))) {
-        throw new Error(`${el} is not a valid tag name`);
+        throw new Error(`"${el}" is not a valid tag name`);
     }
     el = match[1];
     id = match[2];
@@ -186,7 +156,7 @@ const normalizeElement = (tag: any[]) => {
             i++;
         }
         if (obj(attribs.style)) {
-            attribs.style = formatCSS(attribs.style);
+            attribs.style = css(attribs.style);
         }
         tag = tag.slice(i).filter((x) => x != null);
         if (tag.length > 0) {
@@ -196,7 +166,7 @@ const normalizeElement = (tag: any[]) => {
     return [el, attribs];
 };
 
-const formatCSS = (rules: any) => {
+const css = (rules: any) => {
     const css = [];
     for (let r in rules) {
         if (rules.hasOwnProperty(r)) {
@@ -214,7 +184,6 @@ const iter = (x) => !str(x) && x[Symbol.iterator] !== undefined;
 const escape = (x: string) => x.replace(ENTITY_RE, (y) => ENTITIES[y]);
 
 export {
-    serializeTree,
-    normalizeTree,
+    serialize,
     escape,
 };

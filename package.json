@@ -1,6 +1,6 @@
 {
     "name": "thing-hiccup",
-    "version": "0.0.1",
+    "version": "0.1.0",
     "description": "HTML/SVG/XML serialization of nested data structures, iterables & closures",
     "main": "./lib/index.js",
     "scripts": {
@@ -15,8 +15,12 @@
         "hiccup",
         "html",
         "iterators",
+        "json",
         "serialization",
-        "typescript"
+        "svg",
+        "template",
+        "typescript",
+        "xml"
     ],
     "author": "Karsten Schmidt <k+npm@thi.ng>",
     "contributors": [],
