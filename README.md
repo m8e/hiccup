@@ -16,6 +16,8 @@ ES6 to directly define fully data-driven, purely functional and easily
 - Only uses arrays, functions, ES6 iterables / iterators / generators
 - Eager & lazy component composition using embedded functions / closures
 - Support for self-closing tags (incl. validation), boolean attributes
+- Dynamic element attribute value generation via functions
+- CSS formatting of `style` attribute objects
 - Optional HTML entity encoding
 - Small (2.2KB minified) & fast
 
@@ -96,6 +98,18 @@ h.serialize(
 
 ```html
 <div class="notice" selected style="background:#ff0;border:3px solid black">WARNING</div>
+```
+
+If an attribute specifies a function as value, the function is called with the
+entire attribute object as argument. This allows for the dynamic generation of
+attribute values, based on existing ones. The result MUST be a string.
+
+```js
+["div#foo", { bar: (attribs) => attribs.id + "-bar" }]
+```
+
+```html
+<div id="foo" bar="foo-bar"></div>
 ```
 
 ### Simple components

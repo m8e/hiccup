@@ -1,6 +1,6 @@
 {
     "name": "thing-hiccup",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "HTML/SVG/XML serialization of nested data structures, iterables & closures",
     "main": "./lib/index.js",
     "scripts": {

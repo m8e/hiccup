@@ -23,6 +23,40 @@ describe("serialize", () => {
         assert.equal(h.serialize(["link", { href: "#" }]), `<link href="#"/>`);
         assert.equal(h.serialize(["div"]), `<div></div>`);
     });
+    it("attribs", () => {
+        assert.equal(h.serialize(
+            ["div", { bool: true }]),
+            `<div bool></div>`
+        );
+        assert.equal(h.serialize(
+            ["div", { bool: false }]),
+            `<div></div>`
+        );
+        assert.equal(h.serialize(
+            ["div", { foo: "" }]),
+            `<div></div>`
+        );
+        assert.equal(h.serialize(
+            ["div", { foo: 0 }]),
+            `<div foo="0"></div>`
+        );
+        assert.equal(h.serialize(
+            ["div", { foo: {} }]),
+            `<div foo="[object Object]"></div>`
+        );
+        assert.equal(h.serialize(
+            ["div", { foo: () => 23 }]),
+            `<div foo="23"></div>`
+        );
+        assert.equal(h.serialize(
+            ["div", { foo: () => null }]),
+            `<div></div>`
+        );
+        assert.equal(h.serialize(
+            ["div", { foo: { toString: () => "23" } }]),
+            `<div foo="23"></div>`
+        );
+    });
     it("style", () => {
         assert.equal(h.serialize(
             ["div", { style: { a: "red" } }, "foo"]),
@@ -33,6 +67,9 @@ describe("serialize", () => {
         assert.equal(h.serialize(
             ["div", { style: "a:red;" }, "foo"]),
             `<div style="a:red;">foo</div>`);
+        assert.equal(h.serialize(
+            ["div", { style: {} }, "foo"]),
+            `<div>foo</div>`);
     });
     it("simple nested", () => {
         assert.equal(h.serialize(

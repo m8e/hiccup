@@ -26,7 +26,7 @@ const ENTITY_RE = new RegExp(`[${Object.keys(ENTITIES)}]`, "g");
  * Expands any embedded component functions with their results. Each node of the
  * input tree can have one of the following input forms:
  *
- * ```
+ * ```js
  * ["tag", ...]
  * ["tag#id.class1.class2", ...]
  * ["tag", {other: "attrib"}, ...]
@@ -37,12 +37,32 @@ const ENTITY_RE = new RegExp(`[${Object.keys(ENTITIES)}]`, "g");
  *
  * Tags can be defined in "Zencoding" convention, e.g.
  *
- * ```
+ * ```js
  * ["div#foo.bar.baz", "hi"] // <div id="foo" class="bar baz">hi</div>
  * ```
  *
  * The presence of the attributes object (2nd array index) is optional.
- * Any `null` or `undefined` values (other than in head position)
+ * Any attribute values, incl. functions are allowed. If the latter,
+ * the function is called with the full attribs object as argument and
+ * MUST return a string. This allows for the dynamic creation of attrib
+ * values based on other attribs.
+ *
+ * ```js
+ * ["div#foo", {bar: (attribs) => attribs.id + "-bar"}]
+ * // <div id="foo" bar="foo-bar"></div>
+ * ```
+ *
+ * The `style` attribute can ONLY be defined as string or object.
+ *
+ * ```js
+ * ["div", {style: {color: "red", background: "#000"}}]
+ * // <div style="color:red;background:#000;"></div>
+ * ```
+ *
+ * Boolean attribs are serialized in HTML5 syntax (present or not).
+ * `null` or empty string attrib values are ignored.
+ *
+ * Any `null` or `undefined` array values (other than in head position)
  * will be removed, unless a function is in head position.
  *
  * A function in head position of a node acts as composition & delayed
@@ -52,8 +72,8 @@ const ENTITY_RE = new RegExp(`[${Object.keys(ENTITIES)}]`, "g");
  * The return value the function MUST be a valid new tree
  * (or `undefined`).
  *
- * ```
- * const foo = (a,b) => ["div#"+a, b];
+ * ```js
+ * const foo = (a, b) => ["div#" + a, b];
  *
  * [foo, "id", "body"] // <div id="id">body</div>
  * ```
@@ -88,12 +108,20 @@ const _serialize = (tree: any, esc: boolean) => {
                 res = `<${tag}`;
             for (let a in attribs) {
                 if (attribs.hasOwnProperty(a)) {
-                    const v = attribs[a];
-                    if (v !== undefined) {
+                    let v = attribs[a];
+                    if (v != null) {
+                        if (fn(v)) {
+                            if ((v = v(attribs)) == null) {
+                                continue;
+                            }
+                        }
                         if (v === true) {
                             res += " " + a;
                         } else if (v !== false) {
-                            res += ` ${a}="${esc ? escape(v.toString()) : v}"`;
+                            v = v.toString();
+                            if (v.length) {
+                                res += ` ${a}="${esc ? escape(v) : v}"`;
+                            }
                         }
                     }
                 }
@@ -170,10 +198,10 @@ const css = (rules: any) => {
     const css = [];
     for (let r in rules) {
         if (rules.hasOwnProperty(r)) {
-            css.push(r + ":" + rules[r]);
+            css.push(r + ":" + rules[r] + ";");
         }
     }
-    return css.join(";") + (css.length ? ";" : "");
+    return css.join("");
 };
 
 const obj = (x) => Object.prototype.toString.call(x) === "[object Object]";
